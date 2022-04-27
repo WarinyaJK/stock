@@ -1,6 +1,9 @@
 from utils.Logger import Logger
 import xml.etree.ElementTree as ET
 import requests
+from datetime import date, timedelta
+import FinanceDataReader as fdr
+from pandas import DataFrame
 
 
 logger = Logger().get_logger()
@@ -9,11 +12,12 @@ class fs_parser:
     def __init__(self, corp_info, bs_years):
         logger.debug('start parsing financial statemnt doc')
         self.corp_name = corp_info.split("\t")[0]
-        stock_code = corp_info.split("\t")[1].split("\n")[0]
-        logger.debug("%s,%s",self.corp_name, stock_code)
-        self.corp_code = self.parse_xml(stock_code)
+        self.stock_code = corp_info.split("\t")[1].split("\n")[0]
+        logger.debug("%s,%s",self.corp_name, self.stock_code)
+        self.corp_code = self.parse_xml(self.stock_code)
         self.api_key = '3a281b27a21c3dc22614bbf2d8fe3a6266550fe3'
         self.bs_years = bs_years
+        self.total_data = {}
 
 
 
@@ -47,13 +51,22 @@ class fs_parser:
             y_cf =[]
             for code in reprt_code:
                 t_code = code
-                response = requests.get("https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json", params={"crtfc_key": self.api_key, 
+
+                for i in range(1,3):
+                    response = requests.get("https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json", params={"crtfc_key": self.api_key, 
                                                                                          "corp_code": self.corp_code,
                                                                                         "bsns_year": t_year,
                                                                                          "reprt_code" : t_code,
                                                                                          "fs_div" : fs_div
                                                                                         })
-                logger.debug('%s%s', t_year,t_code)
+                    logger.debug('%s%s%s', t_year,t_code,fs_div)
+                    if response.json()['status'] == '013':
+                        fs_div = 'OFS'
+                        continue
+                    else:
+                        break
+
+                
                 if response.json()['status'] == '013':
                     logger.debug("no have data")
                     continue
@@ -62,6 +75,7 @@ class fs_parser:
                 #print(response.json()['list'])
 
                 revenu_flag = 0
+                cashflow_flag = 0
                 for data in aa:
                     if 'ifrs_Revenue' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
@@ -84,9 +98,14 @@ class fs_parser:
                         logger.debug('%s %s', '영업이익', data['thstrm_amount'])
                         y_income.append(int(data['thstrm_amount']))
         
-                    if 'ifrs_CashFlowsFromUsedInOperatingActivities' == data['account_id'] or 'ifrs-full_CashFlowsFromUsedInOperatingActivities' == data['account_id']:
+                    if 'ifrs_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag == 0: 
                         logger.debug('%s %s','현금흐름',data['thstrm_amount'])
                         y_cf.append(int(data['thstrm_amount']))
+                        cashflow_flag = 1
+                    elif 'ifrs-full_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag==0:
+                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
+                        y_cf.append(int(data['thstrm_amount']))
+                        cashflow_flag = 1
                 
                 #dict_ = {'매출액' : [data['thstrm_amount'],data['frmtrm_amount'],data['bfefrmtrm_amount']]}
     
@@ -94,9 +113,65 @@ class fs_parser:
             y_income_dict[t_year] = y_income
             y_cf_dict[t_year] = y_cf
 
+        self.total_data = y_revenu_dict
 
-#obj = fs_parser()
+        for year in self.bs_years:
+            for data in y_income_dict[year]:
+                self.total_data[year].append(data)
         
+            for data in y_cf_dict[year]:
+                self.total_data[year].append(data)
+        logger.debug(self.total_data)
+
+    def parse_stock_cnt(self):
+        stock_count = []
+        for year in self.bs_years:
+            t_year = year
+            response = requests.get("https://opendart.fss.or.kr/api/stockTotqySttus.json", 
+                    params={"crtfc_key": self.api_key,
+                            "corp_code": self.corp_code,
+                            "bsns_year": t_year,
+                            "reprt_code" : '11011'
+                            })
+            #print(response.json()['list'])
+            for data in response.json()['list']:
+                if '보통주' in data['se']:
+                    stock = data['distb_stock_co'].replace(',','')
+                    stock_count.append(int(stock))
+         
+        index = 0
+        #stock_count
+        for year in self.bs_years:
+            self.total_data[year].append(stock_count[index])
+            index = index+1   
+
+        logger.debug(self.total_data)
+    
+    def parse_stock_price(self):
+        stock_price = []
+        for year in self.bs_years:
+            d = date(int(year), 12, 30)
+            if d.weekday() == 6:
+                d = d-timedelta(days=2)
+            elif d.weekday() == 5:
+                d = d-timedelta(days=1)
+
+            df = fdr.DataReader(self.stock_code,d.strftime('%Y-%m-%d'), year+'-12-31')
+            stock_price.append(df['Close'][0])
+        
+        index = 0
+        #stock_count
+        for year in self.bs_years:
+            self.total_data[year].append(stock_price[index])
+            index = index+1
+
+        logger.debug(self.total_data)
+
+    def make_csv(self):
+        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가']
+        summary = DataFrame(self.total_data, index=label)
+        summary.to_excel(self.corp_name + '.xlsx')
+
 
         
 

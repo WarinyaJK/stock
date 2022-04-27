@@ -42,6 +42,9 @@ class main_class:
         for data in self.corp_list:
             obj = fs_parser(data, self.bs_years)
             obj.parse_fs()
+            obj.parse_stock_cnt()
+            obj.parse_stock_price()
+            obj.make_csv()
 
 
 
