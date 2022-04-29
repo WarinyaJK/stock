@@ -167,10 +167,25 @@ class fs_parser:
 
         logger.debug(self.total_data)
 
+    def cal_mc(self):
+        for year in self.bs_years:
+            mc = self.total_data[year][-1] * self.total_data[year][-2]
+            self.total_data[year].append(mc)
+        
+        logger.debug(self.total_data)
+
+
     def make_csv(self):
-        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가']
+        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액']
         summary = DataFrame(self.total_data, index=label)
         summary.to_excel(self.corp_name + '.xlsx')
+
+    def display_data(self):
+        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액']
+        summary = DataFrame(self.total_data, index=label)
+        logger.debug(summary)
+        
+
 
 
         

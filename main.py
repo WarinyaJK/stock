@@ -44,7 +44,9 @@ class main_class:
             obj.parse_fs()
             obj.parse_stock_cnt()
             obj.parse_stock_price()
+            obj.cal_mc()
             obj.make_csv()
+            #obj.display_data()
 
 
 
