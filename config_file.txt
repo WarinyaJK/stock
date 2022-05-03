@@ -1,5 +1,5 @@
 [corp]
-corp_list_file = corp_list.txt
+corp_list_file = tmp
 
 [opt]
 start_year = 2018

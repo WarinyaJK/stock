@@ -1,9 +1,13 @@
 from utils.Logger import Logger
 import xml.etree.ElementTree as ET
 import requests
+import datetime
 from datetime import date, timedelta
 import FinanceDataReader as fdr
 from pandas import DataFrame
+import pandas as pd
+import openpyxl
+import os.path
 
 
 logger = Logger().get_logger()
@@ -18,6 +22,7 @@ class fs_parser:
         self.api_key = '3a281b27a21c3dc22614bbf2d8fe3a6266550fe3'
         self.bs_years = bs_years
         self.total_data = {}
+        self.file_name = str(datetime.datetime.today()).split(' ')[0] + '.xlsx'
 
 
 
@@ -79,6 +84,39 @@ class fs_parser:
                 for data in aa:
                     if 'ifrs_Revenue' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
+                        y_revenu.append((data['thstrm_amount']))
+                        revenu_flag = 1
+                    elif 'ifrs-full_Revenue' == data['account_id'] and revenu_flag==0:
+                        logger.debug('%s %s','매출', data['thstrm_amount'])
+                        y_revenu.append((data['thstrm_amount']))
+                        revenu_flag = 1
+                    elif 'ifrs-full_GrossProfit' == data['account_id'] and revenu_flag==0:
+                        logger.debug('%s %s','매출', data['thstrm_amount'])
+                        y_revenu.append((data['thstrm_amount']))
+                        revenu_flag = 1
+                    elif 'ifrs_GrossProfit' == data['account_id'] and revenu_flag==0:
+                        logger.debug('%s %s','매출', data['thstrm_amount'])
+                        y_revenu.append((data['thstrm_amount']))
+                        revenu_flag = 1
+                
+                    if 'dart_OperatingIncomeLoss' == data['account_id']:
+                        logger.debug('%s %s', '영업이익', data['thstrm_amount'])
+                        y_income.append((data['thstrm_amount']))
+        
+                    if 'ifrs_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag == 0: 
+                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
+                        y_cf.append((data['thstrm_amount']))
+                        cashflow_flag = 1
+                    elif 'ifrs-full_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag==0:
+                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
+                        y_cf.append((data['thstrm_amount']))
+                        cashflow_flag = 1
+                
+
+                """
+                for data in aa:
+                    if 'ifrs_Revenue' == data['account_id'] and revenu_flag==0:
+                        logger.debug('%s %s','매출', data['thstrm_amount'])
                         y_revenu.append(int(data['thstrm_amount']))
                         revenu_flag = 1
                     elif 'ifrs-full_Revenue' == data['account_id'] and revenu_flag==0:
@@ -106,7 +144,7 @@ class fs_parser:
                         logger.debug('%s %s','현금흐름',data['thstrm_amount'])
                         y_cf.append(int(data['thstrm_amount']))
                         cashflow_flag = 1
-                
+                """
                 #dict_ = {'매출액' : [data['thstrm_amount'],data['frmtrm_amount'],data['bfefrmtrm_amount']]}
     
             y_revenu_dict[t_year] = y_revenu
@@ -178,7 +216,21 @@ class fs_parser:
     def make_csv(self):
         label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액']
         summary = DataFrame(self.total_data, index=label)
-        summary.to_excel(self.corp_name + '.xlsx')
+        print(summary.dtypes)
+        file_exists = os.path.exists(self.file_name)
+        if file_exists == False:
+            wb = openpyxl.Workbook()
+            wb.save(self.file_name)
+        else:
+            wb=openpyxl.load_workbook(self.file_name)
+            if self.corp_name in wb.get_sheet_names():
+                wb.remove_sheet(wb.get_sheet_by_name(self.corp_name))
+                wb.save(self.file_name)
+
+        
+        writer = pd.ExcelWriter(self.file_name, engine='openpyxl', mode='a', if_sheet_exists="overlay", float_format='%d')
+        summary.to_excel(writer, sheet_name=self.corp_name)
+        writer.close()
 
     def display_data(self):
         label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액']
