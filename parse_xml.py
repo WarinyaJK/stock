@@ -16,11 +16,12 @@ def parse_xml(stock_name):
 
     return corp_code
 
-f = open('corp', 'r')
+f = open('investing', 'r')
 
 for data in f.readlines():
     parse_xml(data.split('\n')[0])
     
 #parse_xml('카카오')
+
 
 

@@ -16,6 +16,7 @@ class fs_parser:
     def __init__(self, corp_info, bs_years):
         logger.debug('start parsing financial statemnt doc')
         self.corp_name = corp_info.split("\t")[0]
+        print(corp_info)
         self.stock_code = corp_info.split("\t")[1].split("\n")[0]
         logger.debug("%s,%s",self.corp_name, self.stock_code)
         self.corp_code = self.parse_xml(self.stock_code)
@@ -42,19 +43,46 @@ class fs_parser:
 
         return corp_code
 
+    
     def parse_fs(self):
         reprt_code = ['11011','11013','11012','11014']
-
+        
         y_revenu_dict = {}
         y_income_dict= {}
         y_cf_dict = {}
-        for year in self.bs_years:
+
+        i_bs_year = sorted(self.bs_years, reverse=True)
+        
+        idx = 0
+        for data in i_bs_year:
+            i_bs_year[idx] = int(data)
+            idx = idx+1
+        
+
+        print(i_bs_year)
+
+        revenu_tmp_dict = {}
+        income_tmp_dict = {}
+        cf_tmp_dict = {}
+
+        idx = 0
+
+        for year in i_bs_year:
             t_year = year
             fs_div = 'CFS'
+
             y_revenu = []
             y_income = []
-            y_cf =[]
+            y_cf = []
+
             for code in reprt_code:
+                if code == '11011' and (t_year == i_bs_year[idx] -1 or t_year == i_bs_year[idx]-2):
+                    #print(revenu_tmp_dict)
+                    y_revenu.append(revenu_tmp_dict[str(t_year)])
+                    y_income.append(income_tmp_dict[str(t_year)])
+                    y_cf.append(cf_tmp_dict[str(t_year)])
+                    continue
+                    
                 t_code = code
 
                 for i in range(1,3):
@@ -64,7 +92,7 @@ class fs_parser:
                                                                                          "reprt_code" : t_code,
                                                                                          "fs_div" : fs_div
                                                                                         })
-                    logger.debug('%s%s%s', t_year,t_code,fs_div)
+                    logger.debug('%s,%s,%s', t_year,t_code,fs_div)
                     if response.json()['status'] == '013':
                         fs_div = 'OFS'
                         continue
@@ -74,84 +102,141 @@ class fs_parser:
                 
                 if response.json()['status'] == '013':
                     logger.debug("no have data")
+                    if code == '11011':
+                        idx = 1
+
+                    y_revenu.append(0)
+                    y_income.append(0)
+                    y_cf.append(0)
+                    fs_div = 'CFS'
                     continue
+
                 aa = response.json()['list']
-        
-                #print(response.json()['list'])
+                #logger.info(aa)
 
                 revenu_flag = 0
                 cashflow_flag = 0
+                income_flag = 0
                 for data in aa:
                     if 'ifrs_Revenue' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
                         y_revenu.append((data['thstrm_amount']))
+
+                        if code == '11011' and  t_year == i_bs_year[idx]:
+                            revenu_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            revenu_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
                         revenu_flag = 1
                     elif 'ifrs-full_Revenue' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
                         y_revenu.append((data['thstrm_amount']))
+                        if code == '11011' and  t_year == i_bs_year[idx]:
+                            revenu_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            revenu_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
                         revenu_flag = 1
                     elif 'ifrs-full_GrossProfit' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
                         y_revenu.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            revenu_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            revenu_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
                         revenu_flag = 1
                     elif 'ifrs_GrossProfit' == data['account_id'] and revenu_flag==0:
                         logger.debug('%s %s','매출', data['thstrm_amount'])
                         y_revenu.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            revenu_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            revenu_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
                         revenu_flag = 1
-                
+                    
+                    elif '영업수익' == data['account_nm'] and revenu_flag==0:
+                        logger.debug('%s %s','매출', data['thstrm_amount'])
+                        y_revenu.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            revenu_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            revenu_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
+                        revenu_flag = 1
+
+
                     if 'dart_OperatingIncomeLoss' == data['account_id']:
                         logger.debug('%s %s', '영업이익', data['thstrm_amount'])
                         y_income.append((data['thstrm_amount']))
-        
-                    if 'ifrs_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag == 0: 
-                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
-                        y_cf.append((data['thstrm_amount']))
-                        cashflow_flag = 1
-                    elif 'ifrs-full_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag==0:
-                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
-                        y_cf.append((data['thstrm_amount']))
-                        cashflow_flag = 1
-                
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            income_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            income_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
 
-                """
-                for data in aa:
-                    if 'ifrs_Revenue' == data['account_id'] and revenu_flag==0:
-                        logger.debug('%s %s','매출', data['thstrm_amount'])
-                        y_revenu.append(int(data['thstrm_amount']))
-                        revenu_flag = 1
-                    elif 'ifrs-full_Revenue' == data['account_id'] and revenu_flag==0:
-                        logger.debug('%s %s','매출', data['thstrm_amount'])
-                        y_revenu.append(int(data['thstrm_amount']))
-                        revenu_flag = 1
-                    elif 'ifrs-full_GrossProfit' == data['account_id'] and revenu_flag==0:
-                        logger.debug('%s %s','매출', data['thstrm_amount'])
-                        y_revenu.append(int(data['thstrm_amount']))
-                        revenu_flag = 1
-                    elif 'ifrs_GrossProfit' == data['account_id'] and revenu_flag==0:
-                        logger.debug('%s %s','매출', data['thstrm_amount'])
-                        y_revenu.append(int(data['thstrm_amount']))
-                        revenu_flag = 1
-                
-                    if 'dart_OperatingIncomeLoss' == data['account_id']:
+                        income_flag = 1
+
+                    elif '영업이익' == data['account_nm']:
                         logger.debug('%s %s', '영업이익', data['thstrm_amount'])
-                        y_income.append(int(data['thstrm_amount']))
+                        y_income.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            income_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            income_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
+                        income_flag = 1
+
+
         
                     if 'ifrs_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag == 0: 
                         logger.debug('%s %s','현금흐름',data['thstrm_amount'])
-                        y_cf.append(int(data['thstrm_amount']))
+                        y_cf.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            cf_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            cf_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+                        
                         cashflow_flag = 1
+
                     elif 'ifrs-full_CashFlowsFromUsedInOperatingActivities' == data['account_id'] and cashflow_flag==0:
                         logger.debug('%s %s','현금흐름',data['thstrm_amount'])
-                        y_cf.append(int(data['thstrm_amount']))
+                        y_cf.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            cf_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            cf_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
                         cashflow_flag = 1
-                """
-                #dict_ = {'매출액' : [data['thstrm_amount'],data['frmtrm_amount'],data['bfefrmtrm_amount']]}
-    
-            y_revenu_dict[t_year] = y_revenu
-            y_income_dict[t_year] = y_income
-            y_cf_dict[t_year] = y_cf
+
+                    elif 'dart_AdjustmentsForAssetsLiabilitiesOfOperatingActivities' == data['account_id'] and cashflow_flag==0:
+                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
+                        y_cf.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            cf_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            cf_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
+                        cashflow_flag = 1
+
+                    elif 'dart_NetCashflowsFromUsedInOperations' == data['account_id'] and cashflow_flag==0:
+                        logger.debug('%s %s','현금흐름',data['thstrm_amount'])
+                        y_cf.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            cf_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            cf_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+
+                        cashflow_flag = 1
+                    
+                    elif '영업활동으로 인한 순현금흐름' == data['account_nm'] and cashflow_flag==0:
+                        logger.debug('%s %s', '현금흐름', data['thstrm_amount'])
+                        y_cf.append((data['thstrm_amount']))
+                        if code == '11011'  and  t_year == i_bs_year[idx]:
+                            cf_tmp_dict[str(t_year-1)] = data['frmtrm_amount']
+                            cf_tmp_dict[str(t_year-2)] = data['bfefrmtrm_amount']
+                        
+                        cashflow_flag = 1
+
+
+
+            print(revenu_tmp_dict)
+            y_revenu_dict[str(t_year)] = y_revenu
+            y_income_dict[str(t_year)] = y_income
+            y_cf_dict[str(t_year)] = y_cf
 
         self.total_data = y_revenu_dict
+
+        print(y_income_dict)
 
         for year in self.bs_years:
             for data in y_income_dict[year]:
@@ -161,24 +246,76 @@ class fs_parser:
                 self.total_data[year].append(data)
         logger.debug(self.total_data)
 
+        #print(y_revenu_dict)
+
+
+
+
     def parse_stock_cnt(self):
         stock_count = []
+        r_code_list = ['11011', '11014', '11012', '11013']
+        self.year_rept = {}
+        p_stock_cnt = 0
+
         for year in self.bs_years:
             t_year = year
-            response = requests.get("https://opendart.fss.or.kr/api/stockTotqySttus.json", 
+
+            for r_code in r_code_list:
+                response = requests.get("https://opendart.fss.or.kr/api/stockTotqySttus.json", 
                     params={"crtfc_key": self.api_key,
                             "corp_code": self.corp_code,
                             "bsns_year": t_year,
-                            "reprt_code" : '11011'
+                            "reprt_code" : r_code
                             })
+
+                if response.json()['status'] == '000':
+                    self.year_rept[t_year] = r_code
+                    break
+
+            print(response.json())
             #print(response.json()['list'])
+            if response.json()['status'] == '013':
+                stock_count.append(0)
+                self.year_rept[t_year] = r_code
+                continue
+
             for data in response.json()['list']:
-                if '보통주' in data['se']:
+                if '보통주' == data['se']:
                     stock = data['distb_stock_co'].replace(',','')
+                    if stock == '-':
+                        stock = p_stock_cnt
                     stock_count.append(int(stock))
+                    p_stock_cnt = int(stock)
+                    break
+
+                elif '의결권 있는 주식' in data['se']:
+                    stock = data['distb_stock_co'].replace(',','')
+                    if stock == '-':
+                        stock = p_stock_cnt
+                    stock_count.append(int(stock))
+                    p_stock_cnt = int(stock)
+                    break
+                elif '보 통 주' in data['se']:
+                    stock = data['distb_stock_co'].replace(',','')
+                    if stock == '-':
+                        stock = p_stock_cnt
+                    stock_count.append(int(stock))
+                    p_stock_cnt = int(stock)
+                    break
+                elif '합계' in data['se']:
+                    stock = data['distb_stock_co'].replace(',','')
+                    if stock == '-':
+                        stock = p_stock_cnt
+                    stock_count.append(int(stock))
+                    p_stock_cnt = int(stock)
+                    break
+
          
         index = 0
         #stock_count
+        #logger.debug('stock_cnt:%s',stock_count)
+        print(stock_count)
+
         for year in self.bs_years:
             self.total_data[year].append(stock_count[index])
             index = index+1   
@@ -188,13 +325,39 @@ class fs_parser:
     def parse_stock_price(self):
         stock_price = []
         for year in self.bs_years:
-            d = date(int(year), 12, 30)
+            print(self.year_rept)
+
+            rept = self.year_rept[year]
+            mon = 0
+            day = 0
+            f_day = ''
+
+            if rept == '11011':
+                mon = 12
+                day = 30
+                f_day = '-12-31'
+            elif rept == '11014':
+                mon = 9
+                day = 30
+                f_day = '-9-30'
+            elif rept == '11012':
+                mon = 6
+                day = 30
+                f_day = '-6-30'
+            elif rept == '11013':
+                mon = 3
+                day = 31
+                f_day = '-3-31'
+            
+
+            d = date(int(year), mon, day)
             if d.weekday() == 6:
                 d = d-timedelta(days=2)
             elif d.weekday() == 5:
                 d = d-timedelta(days=1)
 
-            df = fdr.DataReader(self.stock_code,d.strftime('%Y-%m-%d'), year+'-12-31')
+            df = fdr.DataReader(self.stock_code,d.strftime('%Y-%m-%d'), year+f_day)
+            print(df['Close'])
             stock_price.append(df['Close'][0])
         
         index = 0
@@ -208,14 +371,53 @@ class fs_parser:
     def cal_mc(self):
         for year in self.bs_years:
             mc = self.total_data[year][-1] * self.total_data[year][-2]
-            self.total_data[year].append(mc)
+            self.total_data[year].append(str(mc))
         
         logger.debug(self.total_data)
 
+    def cal_fm(self):
+        revenu_w_list = []
+        for year in self.bs_years:
+            if self.total_data[year][0] != 0:
+                revenu_y = int(self.total_data[year][0])
+                revenu_1q = int(self.total_data[year][1])
+                
+         
+
+                revenu_w_list.append(revenu_y/revenu_1q)
+                
+        print(revenu_w_list)
+            
+
+        idx = 0
+        for year in self.bs_years:
+            print(year)
+            if idx == 0:
+                self.total_data[str(year)].append(0)
+                #continue
+            else:
+                c_revenu = self.total_data[str(year)][0]
+                p_year = int(year) -1
+                p_revenu = self.total_data[str(p_year)][0]
+                self.total_data[str(year)].append((int(c_revenu) - int(p_revenu))/int(p_revenu))
+            
+            idx = idx+1
+            
+        print(self.total_data)
+            
+            
+            
+
+
 
     def make_csv(self):
-        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액']
-        summary = DataFrame(self.total_data, index=label)
+        label = ['매출', '1Q', '2Q', '3Q', '영업이익', '1Q', '2Q', '3Q','현금흐름', '1Q', '2Q', '3Q', '주식수','주가','시가총액','매출증가율']
+
+        csv_dict = {}
+        for year in self.bs_years:
+            csv_dict[year] = self.total_data[year]
+
+        summary = DataFrame(csv_dict, index=label)
         print(summary.dtypes)
         file_exists = os.path.exists(self.file_name)
         if file_exists == False:
